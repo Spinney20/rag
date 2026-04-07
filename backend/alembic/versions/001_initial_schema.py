@@ -193,6 +193,11 @@ def upgrade() -> None:
         sa.CheckConstraint("status IN ('pending','running','completed','failed')", name="ck_run_status"),
     )
     op.create_index("idx_runs_project", "evaluation_runs", ["project_id"])
+    # Prevent concurrent active runs for same project (FIX 13 DB-level enforcement)
+    op.execute(
+        "CREATE UNIQUE INDEX uq_runs_active_per_project ON evaluation_runs (project_id) "
+        "WHERE status IN ('pending', 'running')"
+    )
 
     # Requirement Evaluations
     op.create_table(

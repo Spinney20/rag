@@ -59,3 +59,8 @@ class EvaluationResult(BaseModel):
 class QueryRewriteResponse(BaseModel):
     """LLM response for multi-query generation."""
     queries: list[str]
+
+
+class RerankResponse(BaseModel):
+    """LLM response for batch reranking scores."""
+    scores: list[int]
