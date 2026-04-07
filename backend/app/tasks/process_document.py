@@ -1,22 +1,24 @@
-"""Celery task: process a .docx document through the pipeline.
+"""Celery task: process a .docx document through the full pipeline.
 
-Pipeline: parse Word → normalize text → detect doc type → update DB.
-Chunking + embedding are in Faza 3.
+Pipeline: parse Word → normalize text → detect doc type → chunk → embed → save.
 """
 
-from celery import shared_task
+import uuid as uuid_mod
+
 from celery.utils.log import get_task_logger
-from sqlalchemy import select
+from sqlalchemy import select, delete
 
 from app.tasks.celery_app import celery_app
 from app.database import SyncSessionLocal
 from app.models.document import Document
+from app.models.chunk import DocumentChunk
 from app.models.project import Project
 from app.services.word_parser_service import parse_docx
 from app.services.text_normalizer import normalize_text
 from app.services.doc_type_detector import detect_doc_type_mismatch
-
-import uuid as uuid_mod
+from app.config import settings
+from app.services.chunking_service import chunk_document
+from app.services import embedding_service
 
 logger = get_task_logger(__name__)
 
@@ -75,8 +77,74 @@ def process_document_task(self, document_id: str):
                 document_id, result.heading_count, result.paragraph_count, result.word_count,
             )
 
-            # TODO Faza 3: chunking + embedding steps will go here
-            # For now, mark as ready (will change when chunking is added)
+            # === ETAPA 4: Chunking ===
+            doc.processing_status = "chunking_in_progress"
+            db.commit()
+
+            # Delete any existing chunks from a previous failed attempt (idempotent on retry)
+            db.execute(delete(DocumentChunk).where(
+                DocumentChunk.document_id == uuid_mod.UUID(document_id)
+            ))
+            db.commit()
+
+            chunks = chunk_document(
+                markdown=markdown,
+                heading_levels=result.heading_levels,
+            )
+
+            # Save chunks to DB (without embeddings yet)
+            chunk_records = []
+            for chunk in chunks:
+                record = DocumentChunk(
+                    document_id=uuid_mod.UUID(document_id),
+                    chunk_index=chunk.chunk_index,
+                    hierarchy_path=chunk.hierarchy_path,
+                    section_id=chunk.section_id,
+                    section_title=chunk.section_title,
+                    hierarchy_level=chunk.hierarchy_level,
+                    content_with_context=chunk.content_with_context,
+                    content_raw=chunk.content_raw,
+                    start_paragraph=chunk.start_paragraph,
+                    end_paragraph=chunk.end_paragraph,
+                    chunk_type=chunk.chunk_type,
+                    token_count=chunk.token_count,
+                    detected_standards=chunk.detected_standards if chunk.detected_standards else [],
+                    table_quality_score=chunk.table_quality_score,
+                    needs_review=chunk.needs_review,
+                )
+                db.add(record)
+                chunk_records.append(record)
+
+            db.commit()
+            doc.processing_status = "chunking_completed"
+            db.commit()
+
+            logger.info("Document chunked: doc=%s chunks=%d", document_id, len(chunk_records))
+
+            # === ETAPA 5: Embedding ===
+            doc.processing_status = "embedding_in_progress"
+            db.commit()
+
+            # Dimension validation — catch mismatch before wasting time on embedding
+            actual_dim = embedding_service.get_dimensions()
+            if actual_dim != settings.EMBEDDING_DIMENSIONS:
+                raise ValueError(
+                    f"Embedding dimension mismatch: model produces {actual_dim} dims "
+                    f"but EMBEDDING_DIMENSIONS={settings.EMBEDDING_DIMENSIONS}. "
+                    f"Either change .env or recreate DB with matching dimensions."
+                )
+
+            # Use ChunkData texts (local), NOT DB records (avoids N+1 lazy load after commit)
+            texts = [c.content_with_context for c in chunks]
+            embeddings = embedding_service.embed_batch(texts)
+
+            for record, emb in zip(chunk_records, embeddings):
+                record.embedding = emb
+            db.commit()
+
+            logger.info("Document embedded: doc=%s vectors=%d", document_id, len(embeddings))
+
+            # === Done ===
             doc.processing_status = "ready"
             db.commit()
 
