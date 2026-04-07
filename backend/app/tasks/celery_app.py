@@ -1,6 +1,10 @@
 from celery import Celery
 
 from app.config import settings
+from app.core.logging import setup_logging
+
+# Configure logging for Celery workers (lifespan doesn't run in workers)
+setup_logging()
 
 celery_app = Celery(
     "ragcheck",

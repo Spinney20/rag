@@ -1,4 +1,5 @@
 import hashlib
+import uuid
 from pathlib import Path, PurePosixPath
 
 from app.config import settings
@@ -20,7 +21,9 @@ def save_upload(project_id: str, filename: str, content: bytes) -> str:
     safe_name = PurePosixPath(filename).name
     if not safe_name or safe_name.startswith("."):
         raise ValueError(f"Invalid filename: {filename}")
-    file_path = upload_dir / safe_name
+    # Prefix with UUID to prevent overwrite on duplicate filenames
+    unique_name = f"{uuid.uuid4().hex[:8]}_{safe_name}"
+    file_path = upload_dir / unique_name
     # Double-check resolved path is inside upload_dir
     if not file_path.resolve().is_relative_to(upload_dir.resolve()):
         raise ValueError(f"Path traversal detected: {filename}")
