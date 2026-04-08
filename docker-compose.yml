@@ -74,5 +74,18 @@ services:
       redis:
         condition: service_healthy
 
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    command: npm run dev
+    ports: ["3000:3000"]
+    volumes:
+      - ./frontend/src:/app/src
+    environment:
+      # Browser accesses backend via localhost (exposed port), NOT Docker internal network
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    depends_on:
+      - backend
+
 volumes:
   postgres_data:
