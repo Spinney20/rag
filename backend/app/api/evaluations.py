@@ -100,11 +100,14 @@ async def trigger_evaluation(
     if not project:
         raise HTTPException(404, "Project not found")
 
-    # FIX 17 + FIX 38: Check project status
-    if body.mode == "thorough" and project.status != "requirements_validated":
-        raise HTTPException(400, "Requirements must be validated first (or use mode='quick')")
-    if body.mode == "quick" and project.status not in ("requirements_extracted", "requirements_validated"):
-        raise HTTPException(400, "Requirements must be extracted first")
+    # FIX 17 + FIX 38: Check project status (allow re-evaluation from 'evaluated' status too)
+    allowed_thorough = ("requirements_validated", "evaluated", "completed")
+    allowed_quick = ("requirements_extracted", "requirements_validated", "evaluated", "completed")
+
+    if body.mode == "thorough" and project.status not in allowed_thorough:
+        raise HTTPException(400, f"Project status '{project.status}' — requirements must be validated first (or use mode='quick')")
+    if body.mode == "quick" and project.status not in allowed_quick:
+        raise HTTPException(400, f"Project status '{project.status}' — requirements must be extracted first")
 
     # FIX 13: Concurrent run prevention
     existing_run = (await db.execute(
@@ -138,11 +141,13 @@ async def trigger_evaluation(
     await db.commit()
     await db.refresh(run)
 
-    # Dispatch Celery task AFTER commit
-    from app.tasks.run_evaluation import run_evaluation_task
-    task = run_evaluation_task.delay(str(project_id), str(run.id), body.model_dump())
+    # Dispatch background task AFTER commit
+    from app.worker import submit_task
+    from app.tasks.run_evaluation import run_evaluation_sync
+    task_id = submit_task("run_evaluation", run_evaluation_sync,
+                          args=(str(project_id), str(run.id), body.model_dump()))
 
-    run.celery_task_id = task.id
+    run.celery_task_id = task_id  # Legacy column name — stores worker thread task_id
     await db.commit()
 
     logger.info("Evaluation triggered: project=%s run=%s", project_id, run.id)

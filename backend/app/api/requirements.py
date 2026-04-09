@@ -45,10 +45,11 @@ async def trigger_extraction(
             f"Project status is '{project.status}'. Documents must be processed first.",
         )
 
-    from app.tasks.extract_requirements import extract_requirements_task
-    task = extract_requirements_task.delay(str(project_id))
+    from app.worker import submit_task
+    from app.tasks.extract_requirements import extract_requirements_sync
+    task_id = submit_task("extract_requirements", extract_requirements_sync, args=(str(project_id),))
 
-    return {"task_id": task.id, "message": "Extraction started"}
+    return {"task_id": task_id, "message": "Extraction started"}
 
 
 @router.get("/projects/{project_id}/requirements", response_model=RequirementListResponse)

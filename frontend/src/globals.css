@@ -1,0 +1,174 @@
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════════════════════════
+   OBSIDIAN COMMAND — Design System
+   Precision engineering aesthetic for construction compliance
+   ═══════════════════════════════════════════════════════════ */
+
+:root {
+  /* Depth layers — 5 levels of surface */
+  --bg-void: #06060a;
+  --bg-base: #0a0a10;
+  --bg-surface: #0f0f16;
+  --bg-elevated: #15151e;
+  --bg-floating: #1a1a26;
+
+  /* Text hierarchy */
+  --text-primary: #eeeef0;
+  --text-secondary: #8888a0;
+  --text-muted: #4a4a60;
+  --text-ghost: #2a2a3a;
+
+  /* Accent: Electric Teal */
+  --accent: #00d4aa;
+  --accent-bright: #00ffcc;
+  --accent-dim: #003d32;
+  --accent-glow: rgba(0, 212, 170, 0.08);
+  --accent-glow-strong: rgba(0, 212, 170, 0.15);
+
+  /* Semantic colors */
+  --conform: #00d4aa;
+  --neconform: #ff4757;
+  --partial: #ffa502;
+  --review: #a855f7;
+  --insufficient: #64748b;
+
+  /* Borders */
+  --border: rgba(255, 255, 255, 0.06);
+  --border-active: rgba(255, 255, 255, 0.12);
+  --border-accent: rgba(0, 212, 170, 0.2);
+
+  /* Typography */
+  --font-display: "Plus Jakarta Sans", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+}
+
+* { scrollbar-width: thin; scrollbar-color: var(--bg-floating) transparent; }
+
+body {
+  margin: 0;
+  background: var(--bg-void);
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Surface styles ─────────────────────────────────── */
+.surface {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.surface-elevated {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.surface-floating {
+  background: var(--bg-floating);
+  border: 1px solid var(--border-active);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+
+/* ── Glow effects ───────────────────────────────────── */
+.glow-border {
+  transition: all 0.3s ease;
+}
+.glow-border:hover {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 1px var(--border-accent), 0 0 20px var(--accent-glow), 0 4px 24px rgba(0,0,0,0.3);
+}
+
+/* ── Accent line (top border glow) ──────────────────── */
+.accent-line::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 20px; right: 20px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.4;
+}
+
+/* ── Verdict badges ─────────────────────────────────── */
+.verdict-conform { background: rgba(0,212,170,0.1); color: var(--conform); border: 1px solid rgba(0,212,170,0.25); }
+.verdict-neconform { background: rgba(255,71,87,0.1); color: var(--neconform); border: 1px solid rgba(255,71,87,0.25); }
+.verdict-partial { background: rgba(255,165,2,0.1); color: var(--partial); border: 1px solid rgba(255,165,2,0.25); }
+.verdict-review { background: rgba(168,85,247,0.1); color: var(--review); border: 1px solid rgba(168,85,247,0.25); }
+.verdict-insufficient { background: rgba(100,116,139,0.1); color: var(--insufficient); border: 1px solid rgba(100,116,139,0.25); }
+
+/* ── Dot grid overlay (engineering paper feel) ──────── */
+.dot-grid::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.03;
+  background-image: radial-gradient(circle, var(--text-muted) 1px, transparent 1px);
+  background-size: 24px 24px;
+  z-index: 0;
+}
+
+/* ── Animations ─────────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.anim-fade-up {
+  animation: fadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+}
+.anim-fade-in {
+  animation: fadeIn 0.4s ease forwards;
+  opacity: 0;
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.9); opacity: 0.8; }
+  50% { transform: scale(1.1); opacity: 0.3; }
+  100% { transform: scale(0.9); opacity: 0.8; }
+}
+.pulse-live {
+  animation: pulse-ring 2s ease-in-out infinite;
+}
+
+@keyframes shimmer-flow {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(200%); }
+}
+.shimmer-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(0,212,170,0.15), transparent);
+  animation: shimmer-flow 2.5s ease-in-out infinite;
+}
+
+/* ── Progress ring (SVG-based) ──────────────────────── */
+.progress-ring-bg { stroke: var(--bg-floating); }
+.progress-ring-fill {
+  stroke: var(--accent);
+  transition: stroke-dashoffset 1s cubic-bezier(0.16, 1, 0.3, 1);
+  filter: drop-shadow(0 0 6px var(--accent-glow-strong));
+}
+
+/* ── Mono data labels ───────────────────────────────── */
+.mono { font-family: var(--font-mono); }
+.label-xs {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}

@@ -1,67 +1,58 @@
-"use client";
-
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { LayoutDashboard, FolderPlus, FileCheck, Settings, Zap } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
+import { LayoutDashboard, FolderPlus, Zap } from "lucide-react";
 import clsx from "clsx";
 
-const NAV_ITEMS = [
-  { href: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { href: "/projects/new", icon: FolderPlus, label: "Proiect Nou" },
+const NAV = [
+  { to: "/", icon: LayoutDashboard, label: "Dashboard" },
+  { to: "/projects/new", icon: FolderPlus, label: "Proiect Nou" },
 ];
 
 export function Sidebar() {
-  const pathname = usePathname();
+  const { pathname } = useLocation();
 
   return (
-    <aside className="fixed left-0 top-0 bottom-0 w-[260px] flex flex-col border-r border-[var(--border)] bg-[var(--bg-secondary)]">
+    <aside className="fixed left-0 top-0 bottom-0 w-[240px] flex flex-col bg-[var(--bg-base)] border-r border-[var(--border)]">
       {/* Logo */}
-      <div className="p-6 pb-4">
-        <Link href="/" className="flex items-center gap-3 group">
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center shadow-lg shadow-cyan-500/20 group-hover:shadow-cyan-500/40 transition-shadow">
-            <Zap className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <span className="text-base font-semibold tracking-tight text-[var(--text-primary)]">
-              RAG Checker
-            </span>
-            <span className="block text-[10px] font-mono text-[var(--accent)] tracking-widest uppercase">
-              conformitate
-            </span>
-          </div>
-        </Link>
-      </div>
+      <Link to="/" className="flex items-center gap-3 px-5 py-5 group">
+        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[var(--accent)] to-teal-700 flex items-center justify-center shadow-[0_0_16px_var(--accent-glow-strong)] group-hover:shadow-[0_0_24px_var(--accent-glow-strong)] transition-shadow">
+          <Zap className="w-4 h-4 text-[var(--bg-void)]" />
+        </div>
+        <div>
+          <span className="text-sm font-bold tracking-tight text-[var(--text-primary)]">RAG Checker</span>
+          <span className="block text-[9px] mono text-[var(--accent)] tracking-[0.15em] uppercase">conformitate</span>
+        </div>
+      </Link>
 
-      {/* Divider with glow */}
+      {/* Divider */}
       <div className="mx-4 h-px bg-gradient-to-r from-transparent via-[var(--accent-dim)] to-transparent" />
 
-      {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
-        {NAV_ITEMS.map((item) => {
-          const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+      {/* Nav */}
+      <nav className="flex-1 px-3 py-4 space-y-0.5">
+        {NAV.map((item) => {
+          const active = item.to === "/" ? pathname === "/" : pathname.startsWith(item.to);
           return (
             <Link
-              key={item.href}
-              href={item.href}
+              key={item.to}
+              to={item.to}
               className={clsx(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
-                isActive
-                  ? "bg-[var(--accent-glow)] text-[var(--accent)] border border-[var(--accent)]/20"
-                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]"
+                "flex items-center gap-2.5 px-3 py-2 rounded-[var(--radius-md)] text-[13px] font-medium transition-all",
+                active
+                  ? "bg-[var(--accent-glow-strong)] text-[var(--accent)] border border-[var(--accent)]/15"
+                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface)]",
               )}
             >
-              <item.icon className={clsx("w-4 h-4", isActive && "text-[var(--accent)]")} />
+              <item.icon className="w-4 h-4" />
               {item.label}
             </Link>
           );
         })}
       </nav>
 
-      {/* Footer */}
-      <div className="p-4 border-t border-[var(--border)]">
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-mono text-[var(--text-muted)]">
-          <div className="w-2 h-2 rounded-full bg-[var(--conform)] pulse-glow" />
-          <span>System online</span>
+      {/* Status */}
+      <div className="px-4 py-3 border-t border-[var(--border)]">
+        <div className="flex items-center gap-2 px-2 text-[11px] mono text-[var(--text-muted)]">
+          <span className="w-1.5 h-1.5 rounded-full bg-[var(--conform)] pulse-live" />
+          System online
         </div>
       </div>
     </aside>

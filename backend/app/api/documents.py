@@ -112,9 +112,10 @@ async def upload_document(
         project_id, doc.id, doc_type, len(content),
     )
 
-    # Trigger async processing AFTER commit
-    from app.tasks.process_document import process_document_task
-    process_document_task.delay(str(doc.id))
+    # Trigger background processing AFTER commit
+    from app.worker import submit_task
+    from app.tasks.process_document import process_document_sync
+    submit_task("process_document", process_document_sync, args=(str(doc.id),))
 
     return DocumentResponse.model_validate(doc)
 

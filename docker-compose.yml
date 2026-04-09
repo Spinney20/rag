@@ -1,3 +1,13 @@
+# RAG Checker — Docker Compose (Server Mode)
+#
+# Production: docker compose up -d
+#   → postgres + backend (serves static frontend built into image)
+#
+# Development: docker compose --profile dev up -d
+#   → postgres + backend + Vite dev server on :3000
+#
+# No Redis, no Celery — background tasks use threading.
+
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -15,75 +25,45 @@ services:
       timeout: 3s
       retries: 10
 
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    ports: ["6379:6379"]
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 3s
-      timeout: 3s
-      retries: 10
-
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     restart: unless-stopped
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     ports: ["8000:8000"]
     volumes:
       - ./backend:/app
       - ./uploads:/uploads
-    env_file: .env
+    environment:
+      APP_MODE: server
+      DATABASE_URL: postgresql+asyncpg://ragcheck:ragcheck_dev@postgres:5432/ragcheck
+      DATABASE_URL_SYNC: postgresql://ragcheck:ragcheck_dev@postgres:5432/ragcheck
+      LLM_PROVIDER: gemini
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-your_key_here}
+      EMBEDDING_PROVIDER: local
+      EMBEDDING_MODEL_LOCAL: paraphrase-multilingual-MiniLM-L12-v2
+      EMBEDDING_DIMENSIONS: "384"
+      CORS_ORIGINS: "http://localhost:3000,http://localhost:5173"
+      UPLOAD_DIR: /uploads
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/api/health')"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
-  celery-worker-processing:
-    build: ./backend
+  # Frontend dev server — ONLY for development (hot reload)
+  # Start with: docker compose --profile dev up -d
+  frontend-dev:
+    profiles: ["dev"]
+    image: node:20-alpine
+    working_dir: /app
     restart: unless-stopped
-    command: celery -A app.tasks.celery_app worker --loglevel=info --pool=solo --concurrency=1 --queues=processing
-    volumes:
-      - ./backend:/app
-      - ./uploads:/uploads
-    env_file: .env
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
-  celery-worker-evaluation:
-    build: ./backend
-    restart: unless-stopped
-    command: celery -A app.tasks.celery_app worker --loglevel=info --pool=solo --concurrency=1 --queues=evaluation
-    volumes:
-      - ./backend:/app
-      - ./uploads:/uploads
-    env_file: .env
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
-  frontend:
-    build: ./frontend
-    restart: unless-stopped
-    command: npm run dev
+    command: sh -c "npm install && npm run dev -- --host"
     ports: ["3000:3000"]
     volumes:
-      - ./frontend/src:/app/src
+      - ./frontend:/app
     environment:
-      # Browser accesses backend via localhost (exposed port), NOT Docker internal network
-      NEXT_PUBLIC_API_URL: http://localhost:8000
+      VITE_API_URL: ""
+      VITE_PROXY_TARGET: http://backend:8000
     depends_on:
       - backend
 

@@ -3,7 +3,6 @@ export interface Project {
   name: string;
   description: string | null;
   status: string;
-  created_by: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -20,7 +19,6 @@ export interface Document {
   processing_error: string | null;
   processing_warning: string | null;
   created_at: string;
-  updated_at: string;
 }
 
 export interface Requirement {
@@ -28,12 +26,10 @@ export interface Requirement {
   project_id: string;
   requirement_text: string;
   original_text: string;
-  section_reference: string | null;
   hierarchy_path: string | null;
   category: string;
   priority: string;
   verification_type: string;
-  is_compound: boolean;
   referenced_standards: string[] | null;
   extraction_confidence: number | null;
   needs_human_review: boolean;
@@ -52,11 +48,10 @@ export interface EvaluationRun {
   insufficient_count: number;
   needs_review_count: number;
   error_count: number;
-  estimated_cost_usd: number | string;  // Decimal from backend — may be number or string
+  estimated_cost_usd: number | string;
   run_config: Record<string, unknown>;
   started_at: string | null;
   completed_at: string | null;
-  error_message: string | null;
   created_at: string;
 }
 
@@ -66,18 +61,12 @@ export interface EvaluationResult {
   verdict: "CONFORM" | "NECONFORM" | "PARTIAL" | "INSUFFICIENT_DATA";
   confidence_score: number;
   reasoning: string;
-  proposal_quotes: Array<{
-    quote: string;
-    fragment_number: number;
-    relevance: string;
-  }>;
+  proposal_quotes: Array<{ quote: string; fragment_number: number; relevance: string }>;
   covered_aspects: string[];
   missing_aspects: string[];
   all_quotes_verified: boolean;
   needs_human_review: boolean;
   human_verdict: string | null;
-  human_note: string | null;
-  llm_model: string | null;
   created_at: string;
 }
 
@@ -91,25 +80,18 @@ export interface Analytics {
   health_warnings: string[];
 }
 
-export const DOC_TYPE_LABELS: Record<string, string> = {
+export const DOC_TYPES: Record<string, string> = {
   caiet_de_sarcini: "Caiet de Sarcini",
   fisa_de_date: "Fișa de Date",
   propunere_tehnica: "Propunere Tehnică",
 };
 
-export const STATUS_LABELS: Record<string, string> = {
-  created: "Creat",
-  processing: "Procesare...",
-  documents_ready: "Documente gata",
-  requirements_extracted: "Cerințe extrase",
-  requirements_validated: "Cerințe validate",
-  evaluated: "Evaluat",
-  completed: "Complet",
-};
-
-export const VERDICT_CONFIG: Record<string, { label: string; class: string; icon: string }> = {
-  CONFORM: { label: "Conform", class: "badge-conform", icon: "✓" },
-  NECONFORM: { label: "Neconform", class: "badge-neconform", icon: "✗" },
-  PARTIAL: { label: "Parțial", class: "badge-partial", icon: "◐" },
-  INSUFFICIENT_DATA: { label: "Date insuficiente", class: "badge-insufficient", icon: "?" },
+export const STATUS_MAP: Record<string, { label: string; color: string }> = {
+  created: { label: "Creat", color: "var(--text-muted)" },
+  processing: { label: "Procesare", color: "var(--accent)" },
+  documents_ready: { label: "Documente gata", color: "var(--accent)" },
+  requirements_extracted: { label: "Cerințe extrase", color: "var(--partial)" },
+  requirements_validated: { label: "Validate", color: "var(--accent)" },
+  evaluated: { label: "Evaluat", color: "var(--conform)" },
+  completed: { label: "Complet", color: "var(--conform)" },
 };
