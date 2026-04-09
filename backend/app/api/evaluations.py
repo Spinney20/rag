@@ -9,12 +9,15 @@ Endpoints:
 - GET  /projects/{id}/evaluations/results/{eval_id}      → single result detail
 - PUT  /projects/{id}/evaluations/results/{eval_id}/review → human override
 - GET  /projects/{id}/analytics             → stats + health warnings
+- GET  /projects/{id}/report/export          → PDF report download
 """
 
+import io
 import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -232,6 +235,128 @@ async def review_result(
     await db.commit()
     await db.refresh(result)
     return EvalResultResponse.model_validate(result)
+
+
+# --- PDF Report Export ---
+
+@router.get("/projects/{project_id}/report/export")
+async def export_pdf_report(project_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Generate and download PDF compliance report."""
+    from app.services.report_service import generate_pdf_report
+
+    # Get project
+    project = await db.get(Project, project_id)
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    # Get latest completed run
+    latest_run = (await db.execute(
+        select(EvaluationRun).where(
+            EvaluationRun.project_id == project_id,
+            EvaluationRun.status == "completed",
+        ).order_by(EvaluationRun.created_at.desc()).limit(1)
+    )).scalar_one_or_none()
+    if not latest_run:
+        raise HTTPException(404, "No completed evaluation runs")
+
+    # Get all results for this run
+    results = (await db.execute(
+        select(RequirementEvaluation).where(
+            RequirementEvaluation.run_id == latest_run.id
+        )
+    )).scalars().all()
+
+    # Get requirements map
+    from app.models.requirement import ExtractedRequirement
+    req_ids = [r.requirement_id for r in results]
+    reqs = (await db.execute(
+        select(ExtractedRequirement).where(ExtractedRequirement.id.in_(req_ids))
+    )).scalars().all()
+    requirements_map = {
+        str(r.id): {
+            "requirement_text": r.requirement_text,
+            "original_text": r.original_text,
+            "hierarchy_path": r.hierarchy_path or "",
+            "category": r.category,
+            "verification_type": r.verification_type,
+        }
+        for r in reqs
+    }
+
+    # Build analytics
+    verdict_dist: dict[str, int] = {}
+    total_conf = 0.0
+    verified = 0
+    review_count = 0
+    for r in results:
+        verdict_dist[r.verdict] = verdict_dist.get(r.verdict, 0) + 1
+        total_conf += r.confidence_score
+        if r.all_quotes_verified:
+            verified += 1
+        if r.needs_human_review:
+            review_count += 1
+
+    total = len(results)
+    analytics = {
+        "verdict_distribution": verdict_dist,
+        "avg_confidence": total_conf / max(total, 1),
+        "quote_verification_rate": verified / max(total, 1),
+        "needs_review_count": review_count,
+        "error_count": latest_run.error_count or 0,
+        "total_evaluated": total,
+        "health_warnings": [],
+    }
+
+    # Health warnings
+    insuf_rate = verdict_dist.get("INSUFFICIENT_DATA", 0) / max(total, 1)
+    if insuf_rate > 0.15:
+        analytics["health_warnings"].append(
+            f"INSUFFICIENT_DATA rate={insuf_rate:.0%} (>15%) — retrieval may be inefficient"
+        )
+    quote_rate = verified / max(total, 1)
+    if quote_rate < 0.85:
+        analytics["health_warnings"].append(
+            f"Quote verification rate={quote_rate:.0%} (<85%) — possible conversion quality issues"
+        )
+
+    # Convert evaluations to dicts
+    eval_dicts = [
+        {
+            "requirement_id": str(r.requirement_id),
+            "verdict": r.verdict,
+            "confidence_score": r.confidence_score,
+            "reasoning": r.reasoning,
+            "proposal_quotes": r.proposal_quotes or [],
+            "covered_aspects": r.covered_aspects or [],
+            "missing_aspects": r.missing_aspects or [],
+            "all_quotes_verified": r.all_quotes_verified,
+            "needs_human_review": r.needs_human_review,
+        }
+        for r in results
+    ]
+
+    # Generate PDF
+    pdf_bytes = generate_pdf_report(
+        project_name=project.name,
+        project_description=project.description,
+        evaluations=eval_dicts,
+        requirements_map=requirements_map,
+        analytics=analytics,
+        run_config=latest_run.run_config or {},
+    )
+
+    # Return as streaming response with sanitized filename
+    import re as _re
+    safe_name = _re.sub(r"[^\w\-.]", "_", project.name)[:40]
+    filename = f"raport_{safe_name}_{datetime.now().strftime('%Y%m%d')}.pdf"
+
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
+    )
 
 
 # --- Analytics (FIX 19) ---

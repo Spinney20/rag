@@ -61,9 +61,15 @@ export default function ReportPage() {
         </Link>
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold tracking-tight">Raport Conformitate</h1>
-          <Button variant="secondary">
+          <Button
+            variant="secondary"
+            onClick={() => {
+              const url = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/projects/${projectId}/report/export`;
+              window.open(url, "_blank");
+            }}
+          >
             <Download className="w-4 h-4" />
-            Export Word
+            Export PDF
           </Button>
         </div>
       </div>
