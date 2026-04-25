@@ -1,12 +1,37 @@
-import { useEffect, useState, useRef } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, ListChecks, AlertCircle, Trash2, Check, Eye } from "lucide-react";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
-import { apiFetch } from "@/lib/api";
-import { Project, Requirement } from "@/lib/types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import {
+  ListChecks,
+  Trash2,
+  ChevronRight,
+  ChevronDown,
+  Flag,
+  ArrowRight,
+  BookOpen,
+  Sparkles,
+  Eye,
+  Loader2,
+} from "lucide-react";
 import clsx from "clsx";
+import { Button } from "@/components/ui/Button";
+import { Panel } from "@/components/ui/Panel";
+import { Badge } from "@/components/ui/Badge";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { apiFetch } from "@/lib/api";
+import {
+  Project,
+  Requirement,
+  CATEGORY_LABELS,
+  PRIORITY_LABELS,
+} from "@/lib/types";
+
+interface RequirementsResponse {
+  requirements: Requirement[];
+  total: number;
+  by_category?: Record<string, number>;
+  by_priority?: Record<string, number>;
+  needs_review_count?: number;
+}
 
 export default function RequirementsPage() {
   const { id } = useParams<{ id: string }>();
@@ -14,12 +39,13 @@ export default function RequirementsPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [reqs, setReqs] = useState<Requirement[]>([]);
   const [total, setTotal] = useState(0);
-  const [stats, setStats] = useState<Record<string, Record<string, number>>>({});
+  const [byCategory, setByCategory] = useState<Record<string, number>>({});
   const [reviewCount, setReviewCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [extracting, setExtracting] = useState(false);
   const [validating, setValidating] = useState(false);
-  const [filter, setFilter] = useState<string | null>(null);
+  const [filterCat, setFilterCat] = useState<string>("all");
+  const [showFlaggedOnly, setShowFlaggedOnly] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
@@ -28,16 +54,20 @@ export default function RequirementsPage() {
     try {
       const [p, r] = await Promise.all([
         apiFetch<Project>(`/projects/${id}`),
-        apiFetch<any>(`/projects/${id}/requirements?limit=500`),
+        apiFetch<RequirementsResponse>(`/projects/${id}/requirements?limit=500`),
       ]);
-      setProject(p); setReqs(r.requirements); setTotal(r.total);
-      setStats({ category: r.by_category || {}, priority: r.by_priority || {} });
+      setProject(p);
+      setReqs(r.requirements);
+      setTotal(r.total);
+      setByCategory(r.by_category || {});
       setReviewCount(r.needs_review_count || 0);
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+    }
     setLoading(false);
   };
 
-  useEffect(() => { fetchData(); }, [id]);
+  useEffect(() => { fetchData(); /* eslint-disable-next-line */ }, [id]);
 
   const handleExtract = async () => {
     setExtracting(true);
@@ -46,123 +76,404 @@ export default function RequirementsPage() {
       let polls = 0;
       pollRef.current = setInterval(async () => {
         polls++;
-        if (polls > 200) { if (pollRef.current) clearInterval(pollRef.current); setExtracting(false); return; }
+        if (polls > 200) {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setExtracting(false);
+          return;
+        }
         try {
           const p = await apiFetch<Project>(`/projects/${id}`);
-          if (p.status === "requirements_extracted") { if (pollRef.current) clearInterval(pollRef.current); pollRef.current = null; await fetchData(); setExtracting(false); }
-          if (p.status === "documents_ready" && polls > 3) { if (pollRef.current) clearInterval(pollRef.current); pollRef.current = null; setExtracting(false); }
+          if (p.status === "requirements_extracted" || p.status === "requirements_validated") {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            await fetchData();
+            setExtracting(false);
+          }
+          if (p.status === "documents_ready" && polls > 3) {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            setExtracting(false);
+          }
         } catch {}
       }, 3000);
-    } catch (e: any) { alert(e.message); setExtracting(false); }
+    } catch (e) {
+      alert((e as Error).message);
+      setExtracting(false);
+    }
   };
 
   const handleValidate = async () => {
     setValidating(true);
-    try { await apiFetch(`/projects/${id}/requirements/validate`, { method: "POST" }); navigate(`/projects/${id}/evaluation`); }
-    catch (e: any) { alert(e.message); setValidating(false); }
+    try {
+      await apiFetch(`/projects/${id}/requirements/validate`, { method: "POST" });
+      navigate(`/projects/${id}/evaluation`);
+    } catch (e) {
+      alert((e as Error).message);
+      setValidating(false);
+    }
   };
 
   const handleDelete = async (reqId: string) => {
-    if (!confirm("Sigur vrei să ștergi?")) return;
-    try { await apiFetch(`/projects/${id}/requirements/${reqId}`, { method: "DELETE" }); setReqs((p) => p.filter((r) => r.id !== reqId)); setTotal((t) => t - 1); } catch {}
+    if (!confirm("Sigur vrei să ștergi această cerință?")) return;
+    try {
+      await apiFetch(`/projects/${id}/requirements/${reqId}`, { method: "DELETE" });
+      setReqs((p) => p.filter((r) => r.id !== reqId));
+      setTotal((t) => Math.max(0, t - 1));
+    } catch (e) {
+      alert((e as Error).message);
+    }
   };
 
-  const filtered = filter === "review" ? reqs.filter((r) => r.needs_human_review) : filter ? reqs.filter((r) => r.category === filter) : reqs;
-  const grouped = filtered.reduce<Record<string, Requirement[]>>((acc, r) => { const k = r.hierarchy_path || "Fără secțiune"; (acc[k] = acc[k] || []).push(r); return acc; }, {});
+  const filtered = useMemo(() => {
+    return reqs.filter((r) => {
+      if (filterCat !== "all" && filterCat !== "review" && r.category !== filterCat) return false;
+      if (filterCat === "review" && !r.needs_human_review) return false;
+      if (showFlaggedOnly && !r.needs_human_review) return false;
+      return true;
+    });
+  }, [reqs, filterCat, showFlaggedOnly]);
 
-  if (loading) return <div className="flex justify-center items-center h-screen"><div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" /></div>;
+  const grouped = useMemo(() => {
+    const g: Record<string, Requirement[]> = {};
+    filtered.forEach((r) => {
+      const key = r.hierarchy_path?.split(" › ")[0] || "Fără secțiune";
+      (g[key] = g[key] || []).push(r);
+    });
+    return g;
+  }, [filtered]);
 
-  const canExtract = project?.status === "documents_ready";
-  const canValidate = project?.status === "requirements_extracted" && total > 0;
+  if (loading) {
+    return (
+      <div className="page" style={{ display: "grid", placeItems: "center", height: "60vh" }}>
+        <Loader2 className="w-6 h-6 animate-spin" style={{ color: "var(--amber)" }} />
+      </div>
+    );
+  }
+
+  const canExtract =
+    project?.status === "documents_ready" ||
+    (project?.status && project.status !== "processing" && total === 0);
+  const canValidate =
+    project?.status === "requirements_extracted" && total > 0 && !validating;
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
-      <div className="mb-6 anim-fade-up">
-        <Link to={`/projects/${id}`} className="inline-flex items-center gap-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors mb-4"><ArrowLeft className="w-3.5 h-3.5" /> Proiect</Link>
-        <h1 className="text-xl font-bold tracking-tight">Cerințe Extrase</h1>
+    <div className="page fadein" style={{ paddingBottom: 110 }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 20, marginBottom: 24 }}>
+        <div style={{ flex: 1 }}>
+          <div className="eyebrow" style={{ marginBottom: 8 }}>
+            ETAPA 2 · EXTRACȚIE CERINȚE
+          </div>
+          <div className="h1">Revizuiește cerințele atomice</div>
+          <div className="muted" style={{ marginTop: 6, fontSize: 14, maxWidth: 720 }}>
+            {total > 0 ? (
+              <>
+                Motorul a identificat{" "}
+                <span className="mono" style={{ color: "var(--ink-0)" }}>{total}</span> cerințe atomice. Elimină
+                dublurile, corectează extragerile eronate, apoi validează pentru a lansa evaluarea.
+              </>
+            ) : (
+              <>Cerințele atomice sunt extrase din Caietul de Sarcini cu un model LLM. Procesul durează ~1 min pe sută de pagini.</>
+            )}
+          </div>
+        </div>
       </div>
 
-      {canExtract && (
-        <Card accent className="mb-6 anim-fade-up" style={{ animationDelay: "50ms" }}>
-          <CardBody className="py-10 text-center">
-            <ListChecks className="w-10 h-10 text-[var(--accent)] mx-auto mb-3" />
-            <h3 className="font-semibold mb-1">Documentele sunt gata</h3>
-            <p className="text-sm text-[var(--text-secondary)] mb-4">Extrage cerințe atomice din Caietul de Sarcini</p>
-            <Button onClick={handleExtract} loading={extracting}>Extrage Cerințe cu AI</Button>
-          </CardBody>
-        </Card>
+      {/* Pre-extract empty state */}
+      {total === 0 && canExtract && !extracting && (
+        <EmptyState
+          icon={<ListChecks className="w-5 h-5" />}
+          title="Documentele sunt indexate"
+          description="Lansează extragerea ca să generezi cerințele atomice din Caietul de Sarcini."
+          action={
+            <Button
+              variant="primary"
+              icon={<Sparkles className="w-3.5 h-3.5" />}
+              onClick={handleExtract}
+              loading={extracting}
+            >
+              Extrage cerințele cu AI
+            </Button>
+          }
+        />
       )}
 
+      {/* Extracting banner */}
       {extracting && (
-        <div className="flex items-center gap-3 px-4 py-3 bg-[var(--accent-glow)] border border-[var(--accent)]/10 rounded-[var(--radius-md)] mb-5">
-          <div className="w-4 h-4 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm text-[var(--accent)]">Extragere în curs...</span>
+        <div className="callout" style={{ marginBottom: 18, borderLeftColor: "var(--amber)" }}>
+          <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: "var(--amber)" }} />
+          <div>
+            <strong>Extragere în curs.</strong> Motorul parcurge Caietul de Sarcini și extrage cerințele atomice.
+            Această pagină se actualizează automat la finalizare.
+          </div>
         </div>
       )}
 
       {total > 0 && (
-        <div className="grid grid-cols-4 gap-3 mb-5">
-          {[{ label: "Total", value: total, onClick: () => setFilter(null) },
-            ...Object.entries(stats.category || {}).slice(0, 3).map(([k, v]) => ({ label: k, value: v, onClick: () => setFilter(k) })),
-          ].map((s, i) => (
-            <Card key={s.label} hover onClick={s.onClick} className="anim-fade-up cursor-pointer" style={{ animationDelay: `${100 + i * 40}ms` }}>
-              <CardBody className="py-2.5 text-center">
-                <div className="text-lg font-bold mono">{s.value}</div>
-                <div className="label-xs">{s.label}</div>
-              </CardBody>
-            </Card>
-          ))}
-        </div>
-      )}
+        <>
+          {/* Review banner */}
+          {reviewCount > 0 && (
+            <div className="callout warn" style={{ marginBottom: 18 }}>
+              <Flag className="w-3.5 h-3.5" />
+              <div>
+                <strong>{reviewCount} cerințe marcate pentru revizuire umană.</strong> Motorul are încredere scăzută
+                în extragere — formulări ambigue, tabele cu structură neregulată sau referințe implicite.
+              </div>
+              <Button
+                size="sm"
+                onClick={() => setShowFlaggedOnly((s) => !s)}
+                icon={<Eye className="w-3.5 h-3.5" />}
+                style={{ marginLeft: "auto" }}
+              >
+                {showFlaggedOnly ? "Arată toate" : "Arată doar marcate"}
+              </Button>
+            </div>
+          )}
 
-      {reviewCount > 0 && (
-        <div className="flex items-center gap-3 px-4 py-2.5 bg-[var(--partial)]/8 border border-[var(--partial)]/15 rounded-[var(--radius-md)] mb-5">
-          <AlertCircle className="w-4 h-4 text-[var(--partial)]" />
-          <span className="text-sm text-[var(--partial)]"><strong>{reviewCount}</strong> necesită review</span>
-          <Button size="sm" variant="ghost" onClick={() => setFilter("review")}><Eye className="w-3.5 h-3.5" /> Arată</Button>
-        </div>
-      )}
-
-      {Object.entries(grouped).map(([section, items], i) => (
-        <Card key={section} className="mb-3 anim-fade-up" style={{ animationDelay: `${200 + i * 20}ms` }}>
-          <CardHeader className="py-2.5 flex items-center justify-between">
-            <span className="mono text-[11px] text-[var(--accent)]">{section}</span>
-            <span className="mono text-[10px] text-[var(--text-muted)]">{items.length}</span>
-          </CardHeader>
-          <CardBody className="space-y-1.5 py-3">
-            {items.map((r) => (
-              <div key={r.id} className={clsx("flex items-start gap-3 px-3 py-2 rounded-[var(--radius-sm)] border transition-colors",
-                r.needs_human_review ? "border-[var(--partial)]/20 bg-[var(--partial)]/5" : "border-[var(--border)] bg-[var(--bg-void)]")}>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] leading-relaxed">{r.requirement_text}</p>
-                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                    <Badge>{r.category}</Badge>
-                    <Badge>{r.verification_type}</Badge>
-                    {r.referenced_standards?.map((s) => <span key={s} className="mono text-[10px] text-[var(--accent)]">{s}</span>)}
-                    {r.needs_human_review && <Badge variant="partial">Review</Badge>}
-                    <span className="mono text-[10px] text-[var(--text-muted)]">{((r.extraction_confidence || 0) * 100).toFixed(0)}%</span>
-                  </div>
-                </div>
-                <button onClick={() => handleDelete(r.id)} className="p-1 hover:bg-[var(--neconform)]/10 rounded text-[var(--text-muted)] hover:text-[var(--neconform)] transition-colors shrink-0">
-                  <Trash2 className="w-3.5 h-3.5" />
+          {/* Category chips */}
+          <div style={{ display: "flex", gap: 6, marginBottom: 22, flexWrap: "wrap" }}>
+            <button
+              className={clsx("chip", filterCat === "all" && "active")}
+              onClick={() => setFilterCat("all")}
+            >
+              Toate <span className="count num">{total}</span>
+            </button>
+            {/* Sort by predefined CATEGORY_LABELS order so the chip row is stable
+                across renders (backend may emit categories in any order). */}
+            {Object.keys(CATEGORY_LABELS)
+              .filter((cat) => (byCategory[cat] || 0) > 0)
+              .map((cat) => (
+                <button
+                  key={cat}
+                  className={clsx("chip", filterCat === cat && "active")}
+                  onClick={() => setFilterCat(cat)}
+                >
+                  {CATEGORY_LABELS[cat]} <span className="count num">{byCategory[cat]}</span>
                 </button>
+              ))}
+            {reviewCount > 0 && (
+              <button
+                className={clsx("chip", filterCat === "review" && "active")}
+                style={{ color: "var(--partial)" }}
+                onClick={() => setFilterCat("review")}
+              >
+                <Flag className="w-3 h-3" /> De revizuit{" "}
+                <span className="count num">{reviewCount}</span>
+              </button>
+            )}
+          </div>
+
+          {/* Grouped list */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+            {Object.entries(grouped).map(([section, items]) => (
+              <div key={section}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    marginBottom: 10,
+                  }}
+                >
+                  <BookOpen className="w-3.5 h-3.5 dim" />
+                  <div className="h3" style={{ fontSize: 13.5 }}>
+                    {section}
+                  </div>
+                  <div className="mono dim" style={{ fontSize: 11 }}>
+                    {items.length} cerințe
+                  </div>
+                  <div style={{ flex: 1, height: 1, background: "var(--line-0)" }} />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {items.map((r) => (
+                    <RequirementCard key={r.id} req={r} onDelete={() => handleDelete(r.id)} />
+                  ))}
+                </div>
               </div>
             ))}
-          </CardBody>
-        </Card>
-      ))}
+            {Object.keys(grouped).length === 0 && (
+              <div style={{ padding: 30 }}>
+                <div className="muted" style={{ fontSize: 13, textAlign: "center" }}>
+                  Niciun rezultat pentru filtrele curente.
+                </div>
+              </div>
+            )}
+          </div>
 
-      {canValidate && (
-        <div className="sticky bottom-0 py-4">
-          <div className="flex items-center justify-between p-4 surface-floating">
-            <div>
-              <span className="text-sm font-medium">{total} cerințe gata</span>
-              <span className="block text-[11px] text-[var(--text-muted)]">Verifică, apoi validează</span>
+          {/* Sticky CTA */}
+          {canValidate && (
+            <div className="sticky-cta">
+              <div className="eyebrow" style={{ color: "var(--amber)" }}>
+                GATA DE VALIDARE
+              </div>
+              <div style={{ fontSize: 13, color: "var(--ink-0)" }}>
+                <span className="mono num" style={{ color: "var(--amber-ink)" }}>
+                  {total}
+                </span>{" "}
+                cerințe ·{" "}
+                <span className="mono num" style={{ color: "var(--partial)" }}>
+                  {reviewCount}
+                </span>{" "}
+                marcate
+              </div>
+              <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
+                <Button
+                  variant="primary"
+                  icon={<ArrowRight className="w-3.5 h-3.5" />}
+                  onClick={handleValidate}
+                  loading={validating}
+                >
+                  Validează și lansează evaluarea
+                </Button>
+              </div>
             </div>
-            <Button onClick={handleValidate} loading={validating} size="lg"><Check className="w-4 h-4" /> Validează și Continuă</Button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+interface ReqCardProps {
+  req: Requirement;
+  onDelete: () => void;
+}
+
+function RequirementCard({ req, onDelete }: ReqCardProps) {
+  const [expanded, setExpanded] = useState(false);
+  const conf = req.extraction_confidence ?? 0;
+  const low = conf < 0.8;
+  const flagged = req.needs_human_review;
+
+  return (
+    <div
+      className="req-card"
+      style={
+        flagged
+          ? { borderColor: "var(--partial-line)", background: "color-mix(in oklch, var(--partial) 5%, var(--bg-glass))" }
+          : low
+          ? { borderColor: "var(--partial-line)" }
+          : undefined
+      }
+    >
+      <button className="req-head" onClick={() => setExpanded((e) => !e)}>
+        <div className="req-id mono" style={{ minWidth: 76 }}>
+          {req.id.slice(0, 8)}
+        </div>
+        <div className="req-text">{req.requirement_text}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }}>
+          <Badge
+            className={`prio-${req.priority}`}
+            dot
+          >
+            {PRIORITY_LABELS[req.priority] || req.priority}
+          </Badge>
+          <Badge>{(CATEGORY_LABELS[req.category] || req.category).toLowerCase()}</Badge>
+          <span
+            className="mono num"
+            style={{
+              fontSize: 11,
+              color:
+                conf >= 0.9
+                  ? "var(--conform)"
+                  : conf >= 0.8
+                  ? "var(--ink-1)"
+                  : "var(--partial)",
+              minWidth: 38,
+              textAlign: "right",
+            }}
+            title="Încredere extragere LLM"
+          >
+            {conf.toFixed(2)}
+          </span>
+          {expanded ? (
+            <ChevronDown className="w-3.5 h-3.5 dim" />
+          ) : (
+            <ChevronRight className="w-3.5 h-3.5 dim" />
+          )}
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="req-body">
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, 1fr)",
+              gap: 18,
+              marginBottom: 14,
+            }}
+          >
+            <div>
+              <div className="label">VERIFICARE</div>
+              <div className="mono" style={{ fontSize: 12, color: "var(--ink-0)", marginTop: 3 }}>
+                {req.verification_type}
+              </div>
+            </div>
+            <div>
+              <div className="label">SECȚIUNE CS</div>
+              <div className="mono" style={{ fontSize: 12, color: "var(--ink-0)", marginTop: 3 }}>
+                {req.hierarchy_path || "—"}
+              </div>
+            </div>
+            <div>
+              <div className="label">STANDARDE</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 3 }}>
+                {req.referenced_standards && req.referenced_standards.length > 0 ? (
+                  req.referenced_standards.map((s) => (
+                    <span key={s} className="code amber">
+                      {s}
+                    </span>
+                  ))
+                ) : (
+                  <span className="dim mono" style={{ fontSize: 11 }}>
+                    —
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {flagged && (
+            <div className="callout warn" style={{ marginBottom: 10 }}>
+              <Flag className="w-3.5 h-3.5" />
+              <div>
+                Încredere scăzută a extragerii. Verifică manual formularea și valorile detectate.
+              </div>
+            </div>
+          )}
+
+          <div className="label" style={{ marginBottom: 4 }}>TEXT ORIGINAL CS</div>
+          <div
+            className="serif"
+            style={{
+              fontSize: 13.5,
+              color: "var(--ink-1)",
+              lineHeight: 1.6,
+              padding: 12,
+              borderLeft: "2px solid var(--line-2)",
+              marginBottom: 14,
+            }}
+          >
+            {req.original_text}
+          </div>
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <Button
+              size="sm"
+              variant="danger"
+              icon={<Trash2 className="w-3 h-3" />}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+            >
+              Șterge
+            </Button>
           </div>
         </div>
       )}
     </div>
   );
 }
+

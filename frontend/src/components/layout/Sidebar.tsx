@@ -1,60 +1,134 @@
-import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, FolderPlus, Zap } from "lucide-react";
+import { NavLink } from "react-router-dom";
+import { LayoutGrid, Plus, Layers, List, Sparkles, Gauge } from "lucide-react";
 import clsx from "clsx";
+import { useCurrentProject } from "@/lib/useCurrentProject";
+import { useParticlesEnabled, setParticlesEnabled } from "@/lib/preferences";
+import { StatusChip } from "@/components/ui/StatusChip";
 
-const NAV = [
-  { to: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { to: "/projects/new", icon: FolderPlus, label: "Proiect Nou" },
+interface NavItem {
+  to: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  end?: boolean;
+  kbd?: string;
+}
+
+const MAIN_NAV: NavItem[] = [
+  { to: "/",             label: "Proiecte",    icon: LayoutGrid, end: true },
+  { to: "/projects/new", label: "Proiect nou", icon: Plus,       kbd: "N" },
 ];
 
 export function Sidebar() {
-  const { pathname } = useLocation();
+  const project = useCurrentProject();
+  const particlesOn = useParticlesEnabled();
+
+  const projectNav: NavItem[] | null = project
+    ? [
+        { to: `/projects/${project.id}`,              label: "Pipeline", icon: Layers,   end: true },
+        { to: `/projects/${project.id}/requirements`, label: "Cerințe",  icon: List },
+        { to: `/projects/${project.id}/evaluation`,   label: "Evaluare", icon: Sparkles },
+        { to: `/projects/${project.id}/report`,       label: "Raport",   icon: Gauge },
+      ]
+    : null;
 
   return (
-    <aside className="fixed left-0 top-0 bottom-0 w-[240px] flex flex-col bg-[var(--bg-base)] border-r border-[var(--border)]">
-      {/* Logo */}
-      <Link to="/" className="flex items-center gap-3 px-5 py-5 group">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[var(--accent)] to-teal-700 flex items-center justify-center shadow-[0_0_16px_var(--accent-glow-strong)] group-hover:shadow-[0_0_24px_var(--accent-glow-strong)] transition-shadow">
-          <Zap className="w-4 h-4 text-[var(--bg-void)]" />
-        </div>
+    <aside className="sidebar">
+      <div className="brand">
+        <div className="brand-mark" aria-hidden="true" />
         <div>
-          <span className="text-sm font-bold tracking-tight text-[var(--text-primary)]">RAG Checker</span>
-          <span className="block text-[9px] mono text-[var(--accent)] tracking-[0.15em] uppercase">conformitate</span>
+          <div className="brand-name">RAG Checker</div>
+          <div className="brand-sub">Conformitate PT/CS</div>
         </div>
-      </Link>
+      </div>
 
-      {/* Divider */}
-      <div className="mx-4 h-px bg-gradient-to-r from-transparent via-[var(--accent-dim)] to-transparent" />
+      <div className="nav-section">
+        <div className="nav-section-title">General</div>
+        {MAIN_NAV.map((n) => (
+          <NavLink
+            key={n.to}
+            to={n.to}
+            end={n.end}
+            className={({ isActive }) => clsx("nav-item", isActive && "active")}
+          >
+            <n.icon className="nav-icon w-[15px] h-[15px]" />
+            <span>{n.label}</span>
+            {n.kbd && <span className="kbd">{n.kbd}</span>}
+          </NavLink>
+        ))}
+      </div>
 
-      {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5">
-        {NAV.map((item) => {
-          const active = item.to === "/" ? pathname === "/" : pathname.startsWith(item.to);
-          return (
-            <Link
-              key={item.to}
-              to={item.to}
-              className={clsx(
-                "flex items-center gap-2.5 px-3 py-2 rounded-[var(--radius-md)] text-[13px] font-medium transition-all",
-                active
-                  ? "bg-[var(--accent-glow-strong)] text-[var(--accent)] border border-[var(--accent)]/15"
-                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface)]",
-              )}
+      {projectNav && project && (
+        <div className="nav-section">
+          <div className="nav-section-title">Proiect curent</div>
+          <div
+            style={{
+              padding: "6px 10px 12px",
+              borderBottom: "1px solid var(--line-0)",
+              marginBottom: 6,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 12.5,
+                color: "var(--ink-0)",
+                lineHeight: 1.35,
+                marginBottom: 8,
+                wordBreak: "break-word",
+              }}
             >
-              <item.icon className="w-4 h-4" />
-              {item.label}
-            </Link>
-          );
-        })}
-      </nav>
+              {project.name}
+            </div>
+            <StatusChip status={project.status} />
+          </div>
+          {projectNav.map((n) => (
+            <NavLink
+              key={n.to}
+              to={n.to}
+              end={n.end}
+              className={({ isActive }) => clsx("nav-item", isActive && "active")}
+            >
+              <n.icon className="nav-icon w-[15px] h-[15px]" />
+              <span>{n.label}</span>
+            </NavLink>
+          ))}
+        </div>
+      )}
 
-      {/* Status */}
-      <div className="px-4 py-3 border-t border-[var(--border)]">
-        <div className="flex items-center gap-2 px-2 text-[11px] mono text-[var(--text-muted)]">
-          <span className="w-1.5 h-1.5 rounded-full bg-[var(--conform)] pulse-live" />
-          System online
+      <div className="sidebar-footer">
+        <div className="user-chip">
+          <div className="avatar">RC</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, color: "var(--ink-0)" }}>Sesiune locală</div>
+            <div
+              style={{
+                fontSize: 10.5,
+                color: "var(--ink-3)",
+                fontFamily: "var(--ff-mono)",
+                letterSpacing: "0.04em",
+              }}
+            >
+              v0.2 · DEV
+            </div>
+          </div>
+          <button
+            className="icon-btn"
+            onClick={() => setParticlesEnabled(!particlesOn)}
+            aria-label={particlesOn ? "Dezactivează fundalul animat" : "Activează fundalul animat"}
+            aria-pressed={particlesOn}
+            title={particlesOn ? "Dezactivează fundalul animat" : "Activează fundalul animat"}
+          >
+            <Sparkles
+              className="w-3.5 h-3.5"
+              style={{
+                color: particlesOn ? "var(--amber)" : "var(--ink-3)",
+                opacity: particlesOn ? 1 : 0.6,
+              }}
+            />
+          </button>
         </div>
       </div>
     </aside>
   );
 }
+
+export default Sidebar;

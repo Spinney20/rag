@@ -86,12 +86,73 @@ export const DOC_TYPES: Record<string, string> = {
   propunere_tehnica: "Propunere Tehnică",
 };
 
-export const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  created: { label: "Creat", color: "var(--text-muted)" },
-  processing: { label: "Procesare", color: "var(--accent)" },
-  documents_ready: { label: "Documente gata", color: "var(--accent)" },
-  requirements_extracted: { label: "Cerințe extrase", color: "var(--partial)" },
-  requirements_validated: { label: "Validate", color: "var(--accent)" },
-  evaluated: { label: "Evaluat", color: "var(--conform)" },
-  completed: { label: "Complet", color: "var(--conform)" },
+export const DOC_TYPE_SHORT: Record<string, string> = {
+  caiet_de_sarcini: "CS",
+  fisa_de_date: "FDA",
+  propunere_tehnica: "PT",
 };
+
+export type StatusDot = "" | "ok" | "warn" | "err" | "live";
+
+export const STATUS_MAP: Record<string, { label: string; dot: StatusDot }> = {
+  created:                { label: "Creat",                dot: "warn" },
+  processing:             { label: "Procesare",            dot: "live" },
+  documents_ready:        { label: "Documente procesate",  dot: "ok"   },
+  requirements_extracted: { label: "Cerințe extrase",      dot: "ok"   },
+  requirements_validated: { label: "Cerințe validate",     dot: "ok"   },
+  evaluation_running:     { label: "Evaluare în curs",     dot: "live" },
+  evaluated:              { label: "Evaluat",              dot: "ok"   },
+  completed:              { label: "Complet",              dot: "ok"   },
+  error:                  { label: "Eroare",               dot: "err"  },
+};
+
+export const PRIORITY_LABELS: Record<string, string> = {
+  obligatoriu: "Obligatoriu",
+  recomandat:  "Recomandat",
+  optional:    "Opțional",
+  informativ:  "Informativ",
+};
+
+export const CATEGORY_LABELS: Record<string, string> = {
+  tehnic:        "Tehnic",
+  materiale:     "Materiale",
+  calitate:      "Calitate",
+  termene:       "Termene",
+  personal:      "Personal",
+  echipamente:   "Echipamente",
+  administrativ: "Administrativ",
+};
+
+export const VERIFICATION_TYPE_LABELS: Record<string, string> = {
+  match_value:       "match_value",
+  match_reference:   "match_reference",
+  match_description: "match_description",
+  unverifiable:      "unverifiable",
+};
+
+export const PIPELINE_STAGES = [
+  { key: "documents",    label: "Documente",   sub: "Parsare, indexare, chunking" },
+  { key: "requirements", label: "Cerințe",     sub: "Extragere atomică via LLM"   },
+  { key: "evaluation",   label: "Evaluare",    sub: "Retrieval + verdicte"        },
+  { key: "report",       label: "Raport",      sub: "Sinteză și export"           },
+] as const;
+
+export function statusToStageIndex(status: string): number {
+  switch (status) {
+    case "created":
+    case "processing":
+      return 0;
+    case "documents_ready":
+      return 1;
+    case "requirements_extracted":
+    case "requirements_validated":
+      return 2;
+    case "evaluation_running":
+      return 2;
+    case "evaluated":
+    case "completed":
+      return 3;
+    default:
+      return 0;
+  }
+}

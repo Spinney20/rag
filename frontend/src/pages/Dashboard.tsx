@@ -1,118 +1,250 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { Plus, FolderOpen, ArrowRight, Activity, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
-import { Card, CardBody } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { Plus, ArrowRight, Search, Folder, AlertTriangle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { Panel } from "@/components/ui/Panel";
+import { KPI } from "@/components/ui/KPI";
+import { Tabs } from "@/components/ui/Tabs";
+import { StatusChip } from "@/components/ui/StatusChip";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { apiFetch } from "@/lib/api";
-import { Project, STATUS_MAP } from "@/lib/types";
+import { Project } from "@/lib/types";
+
+type Filter = "all" | "running" | "warn" | "done";
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<Filter>("all");
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     apiFetch<{ projects: Project[] }>("/projects")
       .then((d) => setProjects(d.projects))
-      .catch((e) => setError(e.message))
+      .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
 
-  const inProgress = projects.filter((p) => !["created", "completed"].includes(p.status)).length;
+  const counts = useMemo(() => {
+    const running = projects.filter(
+      (p) => p.status === "processing" || p.status === "evaluation_running"
+    ).length;
+    const done = projects.filter(
+      (p) => p.status === "evaluated" || p.status === "completed"
+    ).length;
+    const warn = projects.filter((p) => p.status === "error").length;
+    return { all: projects.length, running, warn, done };
+  }, [projects]);
+
+  const filtered = useMemo(() => {
+    return projects.filter((p) => {
+      if (filter === "running" && p.status !== "processing" && p.status !== "evaluation_running") return false;
+      if (filter === "warn" && p.status !== "error") return false;
+      if (filter === "done" && p.status !== "evaluated" && p.status !== "completed") return false;
+      if (query && !p.name.toLowerCase().includes(query.toLowerCase())) return false;
+      return true;
+    });
+  }, [projects, filter, query]);
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
+    <div className="page fadein">
       {/* Header */}
-      <div className="flex items-end justify-between mb-10 anim-fade-up">
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 24, marginBottom: 28 }}>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-[var(--text-secondary)] text-sm mt-1">Verificare conformitate propuneri tehnice</p>
+          <div className="eyebrow" style={{ marginBottom: 10 }}>
+            VERIFICARE CONFORMITATE
+          </div>
+          <div className="h1">Proiecte</div>
+          <div className="muted" style={{ marginTop: 6, fontSize: 14, maxWidth: 620 }}>
+            {counts.all === 0
+              ? "Niciun proiect încă. Creează primul pentru a începe verificarea unei propuneri."
+              : `${counts.all} proiect${counts.all === 1 ? "" : "e"} · ${counts.running} în procesare · ${counts.done} finalizat${counts.done === 1 ? "" : "e"}.`}
+          </div>
         </div>
-        <Link to="/projects/new">
-          <Button size="lg"><Plus className="w-4 h-4" /> Proiect Nou</Button>
-        </Link>
+        <div style={{ marginLeft: "auto" }}>
+          <Button
+            variant="primary"
+            size="lg"
+            icon={<Plus className="w-3.5 h-3.5" />}
+            onClick={() => navigate("/projects/new")}
+          >
+            Proiect nou
+          </Button>
+        </div>
       </div>
 
-      {/* Metrics */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
-        {[
-          { label: "Proiecte", value: projects.length, icon: FolderOpen, color: "var(--accent)" },
-          { label: "În lucru", value: inProgress, icon: Activity, color: "var(--partial)" },
-          { label: "Avertismente", value: 0, icon: AlertTriangle, color: "var(--text-muted)" },
-        ].map((m, i) => (
-          <Card key={m.label} className="anim-fade-up" style={{ animationDelay: `${100 + i * 60}ms` }}>
-            <CardBody className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-                style={{ background: `color-mix(in srgb, ${m.color} 12%, transparent)`, border: `1px solid color-mix(in srgb, ${m.color} 20%, transparent)` }}>
-                <m.icon className="w-5 h-5" style={{ color: m.color }} />
-              </div>
-              <div>
-                <div className="text-2xl font-bold mono">{m.value}</div>
-                <div className="label-xs">{m.label}</div>
-              </div>
-            </CardBody>
-          </Card>
-        ))}
+      {/* KPIs */}
+      <div
+        style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 24 }}
+      >
+        <KPI eyebrow="TOTAL PROIECTE" value={counts.all} sub="Toate proiectele" />
+        <KPI
+          eyebrow="ÎN PROCESARE"
+          value={counts.running}
+          sub="Documente sau evaluare"
+          accent="var(--amber)"
+        />
+        <KPI
+          eyebrow="CU PROBLEME"
+          value={counts.warn}
+          sub="Erori de procesare"
+          accent="var(--neconform-ink)"
+        />
+        <KPI
+          eyebrow="FINALIZATE"
+          value={counts.done}
+          sub="Raport disponibil"
+          accent="var(--conform)"
+        />
       </div>
 
-      {/* Content */}
-      {loading ? (
-        <div className="flex justify-center py-20">
-          <div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
-        </div>
-      ) : error ? (
-        <Card className="anim-fade-up" style={{ animationDelay: "200ms" }}>
-          <CardBody className="py-12 text-center">
-            <AlertTriangle className="w-8 h-8 text-[var(--neconform)] mx-auto mb-3" />
-            <p className="text-sm text-[var(--text-secondary)]">{error}</p>
-          </CardBody>
-        </Card>
-      ) : projects.length === 0 ? (
-        <Card accent className="anim-fade-up" style={{ animationDelay: "200ms" }}>
-          <CardBody className="py-16 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border)] flex items-center justify-center mx-auto mb-4">
-              <FolderOpen className="w-7 h-7 text-[var(--text-muted)]" />
+      {/* List */}
+      <Panel>
+        <div className="panel-header">
+          <div className="h3">Toate proiectele</div>
+          <div
+            style={{
+              marginLeft: "auto",
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <Tabs<Filter>
+              value={filter}
+              onChange={setFilter}
+              items={[
+                { key: "all",     label: "Toate",         count: counts.all },
+                { key: "running", label: "Procesare",     count: counts.running },
+                { key: "warn",    label: "Cu probleme",   count: counts.warn },
+                { key: "done",    label: "Finalizate",    count: counts.done },
+              ]}
+            />
+            <div style={{ position: "relative" }}>
+              <Search
+                className="w-3.5 h-3.5"
+                style={{
+                  position: "absolute",
+                  left: 10,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  color: "var(--ink-3)",
+                  pointerEvents: "none",
+                }}
+              />
+              <input
+                className="input"
+                placeholder="Caută proiect..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                style={{ width: 220, padding: "7px 12px 7px 30px", fontSize: 12.5 }}
+              />
             </div>
-            <h3 className="text-base font-semibold mb-1">Niciun proiect</h3>
-            <p className="text-sm text-[var(--text-secondary)] mb-6">Creează primul proiect pentru a verifica o propunere tehnică</p>
-            <Link to="/projects/new"><Button><Plus className="w-4 h-4" /> Creează Proiect</Button></Link>
-          </CardBody>
-        </Card>
-      ) : (
-        <div className="space-y-2">
-          {projects.map((p, i) => {
-            const st = STATUS_MAP[p.status] || { label: p.status, color: "var(--text-muted)" };
-            return (
-              <Link key={p.id} to={`/projects/${p.id}`}>
-                <Card hover className="anim-fade-up" style={{ animationDelay: `${200 + i * 40}ms` }}>
-                  <CardBody className="flex items-center justify-between py-3.5">
-                    <div className="flex items-center gap-3">
-                      {p.status === "evaluated" || p.status === "completed" ? (
-                        <CheckCircle2 className="w-4 h-4 text-[var(--conform)]" />
-                      ) : p.status === "processing" ? (
-                        <Clock className="w-4 h-4 text-[var(--accent)] animate-spin" />
-                      ) : (
-                        <div className="w-4 h-4 rounded-full border-2 border-[var(--border)]" />
-                      )}
-                      <div>
-                        <span className="text-sm font-semibold">{p.name}</span>
-                        <span className="block text-[11px] text-[var(--text-muted)] mono mt-0.5">
-                          {new Date(p.created_at).toLocaleDateString("ro-RO")}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Badge>{st.label}</Badge>
-                      <ArrowRight className="w-4 h-4 text-[var(--text-ghost)]" />
-                    </div>
-                  </CardBody>
-                </Card>
-              </Link>
-            );
-          })}
+          </div>
         </div>
-      )}
+
+        {loading ? (
+          <div
+            role="status"
+            aria-label="Se încarcă"
+            style={{ padding: 60, display: "grid", placeItems: "center" }}
+          >
+            <Loader2 className="w-6 h-6 animate-spin" style={{ color: "var(--amber)" }} />
+          </div>
+        ) : error ? (
+          <div style={{ padding: 40 }}>
+            <div className="callout err">
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <div>
+                Nu am putut încărca proiectele: <span className="mono">{error}</span>
+              </div>
+            </div>
+          </div>
+        ) : filtered.length === 0 && projects.length === 0 ? (
+          <div style={{ padding: 40 }}>
+            <EmptyState
+              icon={<Folder className="w-5 h-5" />}
+              title="Niciun proiect"
+              description="Creează primul proiect pentru a verifica o propunere tehnică."
+              action={
+                <Button
+                  variant="primary"
+                  icon={<Plus className="w-3.5 h-3.5" />}
+                  onClick={() => navigate("/projects/new")}
+                >
+                  Creează proiect
+                </Button>
+              }
+            />
+          </div>
+        ) : filtered.length === 0 ? (
+          <div style={{ padding: 40 }}>
+            <EmptyState
+              icon={<Search className="w-5 h-5" />}
+              title="Niciun rezultat"
+              description="Niciun proiect nu corespunde filtrelor curente."
+              action={
+                <Button
+                  onClick={() => {
+                    setFilter("all");
+                    setQuery("");
+                  }}
+                >
+                  Resetează filtrele
+                </Button>
+              }
+            />
+          </div>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th style={{ width: "44%" }}>Proiect</th>
+                <th style={{ width: 200 }}>Status</th>
+                <th style={{ width: 140 }}>Creat</th>
+                <th style={{ width: 40 }} />
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((p) => (
+                <tr
+                  key={p.id}
+                  className="clickable"
+                  onClick={() => navigate(`/projects/${p.id}`)}
+                >
+                  <td>
+                    <div
+                      style={{
+                        fontSize: 13.5,
+                        fontWeight: 500,
+                        color: "var(--ink-0)",
+                        marginBottom: 3,
+                      }}
+                    >
+                      {p.name}
+                    </div>
+                    {p.description && (
+                      <div style={{ fontSize: 12, color: "var(--ink-3)" }}>{p.description}</div>
+                    )}
+                  </td>
+                  <td>
+                    <StatusChip status={p.status} />
+                  </td>
+                  <td className="mono num dim" style={{ fontSize: 12 }}>
+                    {new Date(p.created_at).toLocaleDateString("ro-RO")}
+                  </td>
+                  <td>
+                    <ArrowRight className="w-3.5 h-3.5 dim" />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Panel>
     </div>
   );
 }
