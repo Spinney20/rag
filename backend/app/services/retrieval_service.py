@@ -192,11 +192,11 @@ def _hybrid_search(
     vector_sql = text("""
         SELECT id, content_raw, content_with_context, hierarchy_path,
                section_id, chunk_type, start_paragraph, end_paragraph,
-               1 - (embedding <=> :embedding::vector) as cosine_sim
+               1 - (embedding <=> (:embedding)::vector) as cosine_sim
         FROM document_chunks
-        WHERE document_id = ANY(:doc_ids::uuid[])
+        WHERE document_id = ANY((:doc_ids)::uuid[])
           AND embedding IS NOT NULL
-        ORDER BY embedding <=> :embedding::vector
+        ORDER BY embedding <=> (:embedding)::vector
         LIMIT :limit
     """)
     vector_results = db.execute(vector_sql, {
@@ -212,7 +212,7 @@ def _hybrid_search(
                ts_rank(to_tsvector('simple', content_with_context),
                        plainto_tsquery('simple', :query)) as fts_score
         FROM document_chunks
-        WHERE document_id = ANY(:doc_ids::uuid[])
+        WHERE document_id = ANY((:doc_ids)::uuid[])
           AND to_tsvector('simple', content_with_context) @@ plainto_tsquery('simple', :query)
         ORDER BY fts_score DESC
         LIMIT :limit

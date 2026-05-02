@@ -4,6 +4,7 @@ import clsx from "clsx";
 import { useCurrentProject } from "@/lib/useCurrentProject";
 import { useParticlesEnabled, setParticlesEnabled } from "@/lib/preferences";
 import { StatusChip } from "@/components/ui/StatusChip";
+import iconUrl from "@/assets/icon.ico";
 
 interface NavItem {
   to: string;
@@ -34,7 +35,7 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <div className="brand-mark" aria-hidden="true" />
+        <img src={iconUrl} className="brand-mark" alt="RAG Checker" />
         <div>
           <div className="brand-name">RAG Checker</div>
           <div className="brand-sub">Conformitate PT/CS</div>

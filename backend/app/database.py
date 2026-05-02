@@ -14,7 +14,7 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-_lock = threading.Lock()
+_lock = threading.RLock()
 _async_engine = None
 _sync_engine = None
 _AsyncSessionLocal = None

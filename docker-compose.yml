@@ -33,12 +33,15 @@ services:
     ports: ["8000:8000"]
     volumes:
       - ./backend:/app
+      - ./frontend/dist:/app/static
       - ./uploads:/uploads
     environment:
       APP_MODE: server
       DATABASE_URL: postgresql+asyncpg://ragcheck:ragcheck_dev@postgres:5432/ragcheck
       DATABASE_URL_SYNC: postgresql://ragcheck:ragcheck_dev@postgres:5432/ragcheck
       LLM_PROVIDER: gemini
+      LLM_MODEL: ${LLM_MODEL:-gemini-3.1-flash-lite-preview}
+      LLM_MODEL_CHEAP: ${LLM_MODEL_CHEAP:-gemini-3.1-flash-lite-preview}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-your_key_here}
       EMBEDDING_PROVIDER: local
       EMBEDDING_MODEL_LOCAL: paraphrase-multilingual-MiniLM-L12-v2
@@ -48,7 +51,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
 
   # Frontend dev server — ONLY for development (hot reload)
   # Start with: docker compose --profile dev up -d
